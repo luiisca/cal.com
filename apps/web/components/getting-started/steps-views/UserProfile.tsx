@@ -1,17 +1,16 @@
 import { ArrowRightIcon } from "@heroicons/react/solid";
+import crypto from "crypto";
 import { useRouter } from "next/router";
 import { FormEvent, useRef, useState } from "react";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 
 import { useLocale } from "@calcom/lib/hooks/useLocale";
 import { User } from "@calcom/prisma/client";
 import { trpc } from "@calcom/trpc/react";
-import { Button } from "@calcom/ui/components";
+import { Avatar, Button } from "@calcom/ui/components";
 import { TextArea } from "@calcom/ui/components/form";
 import { showToast } from "@calcom/ui/v2";
 import ImageUploader from "@calcom/ui/v2/core/ImageUploader";
-
-import { AvatarSSR } from "@components/ui/AvatarSSR";
 
 interface IUserProfile {
   user?: User;
@@ -19,6 +18,7 @@ interface IUserProfile {
 
 type FormData = {
   bio: string;
+  avatar: string;
 };
 
 const UserProfile = (props: IUserProfile) => {
@@ -27,13 +27,19 @@ const UserProfile = (props: IUserProfile) => {
   const avatarRef = useRef<HTMLInputElement>(null!);
   const bioRef = useRef<HTMLTextAreaElement>(null);
   const {
+    control,
     register,
     setValue,
     handleSubmit,
     formState: { errors },
-  } = useForm<FormData>({ defaultValues: { bio: user?.bio || "" } });
+  } = useForm<FormData>({ defaultValues: { bio: user?.bio || "", avatar: user?.avatar || "" } });
+
+  const emailMd5 = crypto
+    .createHash("md5")
+    .update(user?.email || "example@example.com")
+    .digest("hex");
+
   const { data: eventTypes } = trpc.viewer.eventTypes.list.useQuery();
-  const [imageSrc, setImageSrc] = useState<string>(user?.avatar || "");
   const utils = trpc.useContext();
   const router = useRouter();
   const createEventType = trpc.viewer.eventTypes.create.useMutation();
@@ -103,36 +109,26 @@ const UserProfile = (props: IUserProfile) => {
   return (
     <form onSubmit={onSubmit}>
       <div className="flex flex-row items-center justify-start rtl:justify-end">
-        {user && <AvatarSSR user={user} alt="Profile picture" className="h-16 w-16" />}
-        <input
-          ref={avatarRef}
-          type="hidden"
+        <Controller
+          control={control}
           name="avatar"
-          id="avatar"
-          placeholder="URL"
-          className="mt-1 block w-full rounded-sm border border-gray-300 px-3 py-2 text-sm focus:border-neutral-800 focus:outline-none focus:ring-neutral-800"
-          defaultValue={imageSrc}
+          render={({ field: { value } }) => (
+            <>
+              <Avatar alt="" imageSrc={value} gravatarFallbackMd5={emailMd5} size="lg" />
+              <div className="ml-4">
+                <ImageUploader
+                  target="avatar"
+                  id="avatar-upload"
+                  buttonMsg="Change Avatar"
+                  handleAvatarChange={(newAvatar) => {
+                    setValue("avatar", newAvatar);
+                  }}
+                  imageSrc={value}
+                />
+              </div>
+            </>
+          )}
         />
-        <div className="flex items-center px-4">
-          <ImageUploader
-            target="avatar"
-            id="avatar-upload"
-            buttonMsg={t("add_profile_photo")}
-            handleAvatarChange={(newAvatar) => {
-              avatarRef.current.value = newAvatar;
-              const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-                window.HTMLInputElement.prototype,
-                "value"
-              )?.set;
-              nativeInputValueSetter?.call(avatarRef.current, newAvatar);
-              const ev2 = new Event("input", { bubbles: true });
-              avatarRef.current.dispatchEvent(ev2);
-              updateProfileHandler(ev2 as unknown as FormEvent<HTMLFormElement>);
-              setImageSrc(newAvatar);
-            }}
-            imageSrc={imageSrc}
-          />
-        </div>
       </div>
       <fieldset className="mt-8">
         <label htmlFor="bio" className="mb-2 block text-sm font-medium text-gray-700">
